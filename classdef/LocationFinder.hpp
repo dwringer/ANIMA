@@ -54,7 +54,7 @@ DEFMETHOD("LocationFinder", "obj_landing_zones") ["_self", "_avoid"] DO {
 			fnc_check_los_grid]
 		       call fnc_to_cost_function];
 	if (not (isNil "_avoid")) then {
-		if (0 < (count _enemies)) then {
+		if (0 < (count _avoid)) then {
 			_assignments = [["_avoid", _avoid]];
 			_objectives = _objectives +
 				[[false, 0, 1,
