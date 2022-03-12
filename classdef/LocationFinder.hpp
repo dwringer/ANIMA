@@ -12,6 +12,7 @@ DEFCLASS("LocationFinder") ["_self", "_pop_size", "_shape_fn"] DO {
 	 ["assignments",    [["targets", []]]],
 	 ["center",         [position player]],
 	 ["color",          "ColorOrange"],
+	 ["postSort",       false],
 	 ["positionLog",    []]];
 	_self
 } ENDCLASSV;
@@ -71,12 +72,14 @@ DEFMETHOD("LocationFinder", "obj_landing_zones") ["_self", "_avoid"] DO {
 	};
 	_self setVariable [ "assignments", _assignments ];
 	_self setVariable [ "objectives",  _objectives  ];
+	_self setVariable [ "postSort",    true         ];
 } ENDMETHOD;
 
 DEFMETHOD("LocationFinder", "obj_tactical_approach") ["_self", "_targets"] DO {
 	_self setVariable ["assignments", [["targets", _targets]]];
 	_self setVariable ["center", [[["_x"], {position _x}] call fnc_lambda,
 				      _targets] call fnc_map];
+	_self setVariable [ "postSort",    true         ];
 	_self setVariable ["objectives",
 			   [OPT_fnc_no_LOS_to_targets,
 			    OPT_fnc_extreme_distance_from_targets,
@@ -97,6 +100,7 @@ DEFMETHOD("LocationFinder", "obj_tactical_advantage") ["_self", "_targets", "_av
 	_self setVariable ["assignments", [["targets", _targets]]];
 	_self setVariable ["center", [[["_x"], {position _x}] call fnc_lambda,
 				      _targets] call fnc_map];
+	_self setVariable [ "postSort",    true         ];
 	_self setVariable ["objectives",
 	                   [OPT_fnc_building_positions_nearby,
 	                    OPT_fnc_cover_available,
@@ -118,6 +122,7 @@ DEFMETHOD("LocationFinder", "obj_sniper_nests") ["_self", "_targets", "_avoid_wa
 	_self setVariable ["assignments", [["targets", _targets]]];
 	_self setVariable ["center", [[["_x"], {position _x}] call fnc_lambda,
 				      _targets] call fnc_map];
+	_self setVariable [ "postSort",    true         ];
 	_self setVariable ["objectives",
 	                   [OPT_fnc_cover_available,
 	                    OPT_fnc_vegetation_dense,
@@ -143,7 +148,8 @@ DEFMETHOD("LocationFinder", "run") ["_self", "_max_required", "_step_count_targe
 		   [[.35, .8], [.8, .35]], // [[weight-prior, mutation-freq]_0, "_f]
 		   _self getVariable "shape",
 		   _step_count_target,
-		   _self getVariable "color"]
+		   _self getVariable "color",
+		   _self getVariable "postSort"]
 	call fnc_find_positions;
 	[_self, "_push_attr", "positionLog", _result] call fnc_tell;
 	[[["_elt"], {

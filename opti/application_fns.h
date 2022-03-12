@@ -16,6 +16,20 @@ fnc_calculate_DE_parameters = [["_range_matrix",
 	[_weight, _freq]
 }] call fnc_lambda;
 
+fnc_compare_average_score = [["_a", "_b"], {
+			       private ["_scoreA", "_scoreB",
+					"_accA", "_accB"];
+			       _accA = 0;
+			       _accB = 0;
+			       _scoreA = [_a, "evaluate_objectives"]
+				 call fnc_tell;
+			       {_accA = _accA + _x} forEach _scoreA;
+			       _scoreB = [_b, "evaluate_objectives"]
+				 call fnc_tell;
+			       {_accB = _accB + _x} forEach _scoreB;
+			       (_accA / (count _scoreA)) <
+				 (_accB / (count _scoreB))
+}] call fnc_lambda;
 
 fnc_find_positions = [["_radius",           /* Initial search radius */
                        "_init_array",       /* Initial position set */
@@ -27,7 +41,8 @@ fnc_find_positions = [["_radius",           /* Initial search radius */
                        "_DE_parameters",    /* DE parameter[ range]s */
 		       "_seed_form",        /* Initialize with shape */
 		       "_max_retries",
-		       "_color"], {   
+		       "_color",
+		       "_post_sort"], {   
 	/* Evolve positions from initial array */
 	private ["_optimizer", "_result", "_assignment", "_assignments",
 	         "_key", "_value", "_bins", "_retries"];
@@ -111,5 +126,17 @@ fnc_find_positions = [["_radius",           /* Initial search radius */
 	} forEach ([_bins, 1, 0] call fnc_subseq);
 	_result = _optimizer getVariable "result";
 	deleteVehicle _optimizer;
-	_result
+	if (isNil "_post_sort") then {
+	    _result
+        } else {
+	  if ((typeName _post_sort) == "BOOL") then {
+	      if (_post_sort) then {
+		  [_result, fnc_compare_average_score] call fnc_sorted;  
+              } else {
+		_result
+	      };
+	  } else {
+	    [_result, _post_sort] call fnc_sorted;
+	  };
+        };
 }] call fnc_vlambda;
