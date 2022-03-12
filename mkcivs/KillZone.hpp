@@ -47,7 +47,9 @@ DEFMETHOD("KillZone", "arm") ["_self", "_population_size", "_generations"] DO {
 				    ceil (1.618 * (count _targets)),
 				    [[.35, .8], [.8, .35]],
 				    [_population_size]
-				     call fnc_make_concentric_rings]
+				     call fnc_make_concentric_rings,
+				    _generations,
+				    "ColorGreen"]
 				    call fnc_find_positions];
 	};
 } ENDMETHOD;

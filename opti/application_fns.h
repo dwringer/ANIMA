@@ -42,11 +42,12 @@ fnc_find_positions = [["_radius",           /* Initial search radius */
 		       "_seed_form",        /* Initialize with shape */
 		       "_max_retries",
 		       "_color",
-		       "_post_sort"], {   
+		       "_post_sort",
+		       "_allow_single_bin"], {   
 	/* Evolve positions from initial array */
 	private ["_optimizer", "_result", "_assignment", "_assignments",
 	         "_key", "_value", "_bins", "_retries"];
-
+	if (isNil "_allow_single_bin") then { _allow_single_bin = false };
 	if (isNil "_max_retries") then {_max_retries = _generations};
         // Prepare the optimizer:       
 	if (isNil "_color") then {	
@@ -104,7 +105,10 @@ fnc_find_positions = [["_radius",           /* Initial search radius */
 	
 	// Keep going if only one bin or not enough dominant solutions found:
 	_retries = 0;
-	while {(((count _bins) <= 1) or
+	if (_allow_single_bin) then {
+	    hint "Allowing single bin results";
+	  };
+	while {(((not _allow_single_bin) and ((count _bins) <= 1)) or
 		((count (_bins select 0)) < _number_expected)) and
 	       (_retries < _max_retries)} do {
 	        ([_optimizer, "MODE_step"] +

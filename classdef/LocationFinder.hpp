@@ -3,17 +3,18 @@ DEFCLASS("LocationFinder") ["_self", "_pop_size", "_shape_fn"] DO {
 	if (isNil "_pop_size") then {_pop_size = 5};
         if (isNil "_shape_fn") then {_shape_fn = fnc_make_ring };
 	{_self setVariable [_x select 0, _x select 1];} forEach
-	[["populationSize", _pop_size],
- 	 ["shape",          [_pop_size] call _shape_fn],
-	 ["radius",         105],
-	 ["objectives",     [[false, 0.35, 1.5, '[_x, 3, 2]',
-			     fnc_check_level]
-			    call fnc_to_cost_function]],
-	 ["assignments",    [["targets", []]]],
-	 ["center",         [position player]],
-	 ["color",          "ColorOrange"],
-	 ["postSort",       false],
-	 ["positionLog",    []]];
+	[["populationSize",  _pop_size],
+ 	 ["shape",           [_pop_size] call _shape_fn],
+	 ["radius",          105],
+	 ["objectives",      [[false, 0.35, 1.5, '[_x, 3, 2]',
+			      fnc_check_level]
+			     call fnc_to_cost_function]],
+	 ["assignments",     [["targets", []]]],
+	 ["center",          [position player]],
+	 ["color",           "ColorOrange"],
+	 ["postSort",        false],
+	 ["allowSingleBins", false],
+	 ["positionLog",     []]];
 	_self
 } ENDCLASSV;
 
@@ -70,9 +71,9 @@ DEFMETHOD("LocationFinder", "obj_landing_zones") ["_self", "_avoid"] DO {
 				 call fnc_to_cost_function];
 		};
 	};
-	_self setVariable [ "assignments", _assignments ];
-	_self setVariable [ "objectives",  _objectives  ];
-	_self setVariable [ "postSort",    true         ];
+	_self setVariable [ "assignments",     _assignments ];
+	_self setVariable [ "objectives",      _objectives  ];
+	_self setVariable [ "postSort",        true         ];
 } ENDMETHOD;
 
 DEFMETHOD("LocationFinder", "obj_tactical_approach") ["_self", "_targets"] DO {
@@ -149,7 +150,8 @@ DEFMETHOD("LocationFinder", "run") ["_self", "_max_required", "_step_count_targe
 		   _self getVariable "shape",
 		   _step_count_target,
 		   _self getVariable "color",
-		   _self getVariable "postSort"]
+		   _self getVariable "postSort",
+		   _self getVariable "allowSingleBins"]
 	call fnc_find_positions;
 	[_self, "_push_attr", "positionLog", _result] call fnc_tell;
 	[[["_elt"], {

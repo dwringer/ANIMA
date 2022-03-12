@@ -550,7 +550,8 @@ DEFMETHOD("Headquarters", "attack_targets") ["_self",
 					     "_targets",
 					     "_commit",
 					     "_wp_config"] DO {
-	private ["_image", "_locs", "_nextLocs", "_avail", "_locationFinder"];
+        private ["_image", "_locs", "_nextLocs", "_avail", "_locationFinder",
+		 "_dispatchCount", "_color"];
 	_image = ["TargetImpression", _targets] call fnc_new;
 	/* Exit if the target array is empty by this point: */
 	if ((count (_image getVariable "_logics")) <= 0) exitWith {
@@ -562,8 +563,13 @@ DEFMETHOD("Headquarters", "attack_targets") ["_self",
 	    (not (typeName _commit == "SCALAR"))) then { _commit = _avail };
 	if (isNil "_wp_config") then { _wp_config = true };
 	_locationFinder = ["LocationFinder"] call fnc_new;
+	if (blufor == side ((_self getVariable "_men") select 0)) then {
+	    _color = "ColorBlue";
+	} else {
+	  _color = "ColorRed";
+	};
 	[_locationFinder, "configure", 
-	 [["color",          "ColorRed"], 
+	 [["color",          _color], 
 	  ["populationSize", 7], 
 	  ["radius",         125],
 	  ["shape",          [7] call fnc_make_ring]]] call fnc_tell;
@@ -577,10 +583,16 @@ DEFMETHOD("Headquarters", "attack_targets") ["_self",
 	   _nextLocs = [[["_x"], {not (surfaceIsWater (position _x))}] 
 			call fnc_lambda, _nextLocs] call fnc_filter;     
 	   _locs append _nextLocs;
-	   if (0 < (count _locs)) then {
+	   _availableCount = ([_self, "available"] call fnc_tell);
+	   if (_availableCount < _commit) then {
+	     _dispatchCount = _commit min (count _nextLocs);
+           } else {
+	     _dispatchCount = ((count _nextLocs) min _availableCount)
+                               min _commit;
+	   };
+	   if (0 < (count _nextLocs)) then {
 		   [_self, "dispatch",
-		    (count _nextLocs) min (([_self, "available"] call fnc_tell)
-		    max _commit),
+		    _dispatchCount,
 		    _nextLocs, _wp_config, true] call fnc_tell;
 	   };
 	 };
