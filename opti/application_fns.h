@@ -105,9 +105,6 @@ fnc_find_positions = [["_radius",           /* Initial search radius */
 	
 	// Keep going if only one bin or not enough dominant solutions found:
 	_retries = 0;
-	if (_allow_single_bin) then {
-	    hint "Allowing single bin results";
-	  };
 	while {(((not _allow_single_bin) and ((count _bins) <= 1)) or
 		((count (_bins select 0)) < _number_expected)) and
 	       (_retries < _max_retries)} do {
