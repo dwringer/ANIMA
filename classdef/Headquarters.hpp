@@ -100,15 +100,28 @@ DEFMETHOD("Headquarters", "untrack") ["_self", "_units"] DO {
 } ENDMETHOD;
 
 DEFMETHOD("Headquarters", "dispatch") ["_self", "_n", "_locations", "_wp_config",
-				       "_no_transports"] DO {
+				       "_no_transports", "_nearest"] DO {
 	private ["_groups", "_dispatched", "_behavior", "_speed", "_transports",
 		 "_fn_mean_position", "_fn_add", "_fn_sort", "_fn_reduce_if_exists"];
-	if (isNil "_wp_config") then {
+	if ((isNil "_wp_config") or
+	    (("BOOL" == (typeName _wp_config)) and (not _wp_config)))  then {
 		_behavior = "COMBAT";
 		_speed    = "NORMAL";
 	} else {
-		_behavior = "AWARE";
-		_speed    = "FULL";
+	      _behavior = "AWARE";
+	      _speed    = "FULL";
+	       
+	};
+        if (isNil "_nearest") then {
+	    _nearest = 0;
+	} else {
+	  if ("BOOL" == (typeName _nearest)) then {
+	      if (_nearest) then {
+		  _nearest = 1  ;
+	      } else {
+		  _nearest = 0;
+	      };
+	    };
 	};
 	_fn_mean_position = [["_units"], {
 		([[["_x"], {position _x}] call fnc_lambda, _units] call fnc_map)
@@ -144,6 +157,15 @@ DEFMETHOD("Headquarters", "dispatch") ["_self", "_n", "_locations", "_wp_config"
 	};
 	_groups = [_groups, 0, _n] call fnc_subseq;
 	_n = (_n min (count _groups)) min (count _locations);
+	if ((random 1) < _nearest) then {
+	    _locations = [_locations, 
+			  [["_a", "_b"], {
+			      private ["_apos"];
+			      _apos = position ((units (_groups select 0)) select 0);
+			      (([_apos, position _a] call fnc_euclidean_distance) <
+			       ([_apos, position _b] call fnc_euclidean_distance))
+				}] call fnc_lambda] call fnc_sorted;
+	};
 	_locations = [_locations, 0, _n] call fnc_subseq;	
 	[[["_loc", "_grp"], {
 		private ["_wp"];
@@ -182,7 +204,17 @@ DEFMETHOD("Headquarters", "dispatch_transports") ["_self", "_n", "_locations", "
 		_behavior = "CARELESS";
 		_speed    = "FULL";
 	};
-        if (isNil "_nearest") then { _nearest = false; };
+        if (isNil "_nearest") then {
+	    _nearest = 0;
+	} else {
+	  if ("BOOL" == typeName "_nearest") then {
+	      if (_nearest) then {
+		  _nearest = 1  ;
+	      } else {
+		  _nearest = 0;
+	      };
+	    };
+	};
 	_fn_mean_position = [["_units"], {
 		([[["_x"], {position _x}] call fnc_lambda, _units] call fnc_map)
 		call fnc_vector_mean
@@ -220,9 +252,7 @@ DEFMETHOD("Headquarters", "dispatch_transports") ["_self", "_n", "_locations", "
 	_n = (_n min (count _groups)) min (count _locations);
 	_groups      = [_groups,     0, _n] call fnc_subseq;
 	_passsengers = [_passengers, 0, _n] call fnc_subseq;
-	if ((_nearest isEqualTo true) or
-	    ((not (_nearest isEqualTo false)) and
-	     ((random 1) < _nearest))) then {
+	if ((random 1) < _nearest) then {
 	    _locations = [_locations, 
 			  [["_a", "_b"], {
 			      private ["_apos"];
@@ -549,9 +579,11 @@ DEFMETHOD("Headquarters", "approach_targets") ["_self",
 DEFMETHOD("Headquarters", "attack_targets") ["_self",
 					     "_targets",
 					     "_commit",
-					     "_wp_config"] DO {
+					     "_wp_config",
+					     "_nearest"] DO {
         private ["_image", "_locs", "_nextLocs", "_avail", "_locationFinder",
 		 "_dispatchCount", "_color"];
+        if (isNil "_nearest")   then { _nearest   = false };
 	_image = ["TargetImpression", _targets] call fnc_new;
 	/* Exit if the target array is empty by this point: */
 	if ((count (_image getVariable "_logics")) <= 0) exitWith {
@@ -593,7 +625,7 @@ DEFMETHOD("Headquarters", "attack_targets") ["_self",
 	   if (0 < (count _nextLocs)) then {
 		   [_self, "dispatch",
 		    _dispatchCount,
-		    _nextLocs, _wp_config, true] call fnc_tell;
+		    _nextLocs, _wp_config, true, _nearest] call fnc_tell;
 	   };
 	 };
 	 [_image, "dispose"] call fnc_tell;
