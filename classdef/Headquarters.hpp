@@ -197,12 +197,14 @@ DEFMETHOD("Headquarters", "dispatch_transports") ["_self", "_n", "_locations", "
 		 "_speed", "_pairs", "_passengers",
 		 "_fn_mean_position", "_fn_add", "_fn_sort",
 		 "_fn_reduce_if_exists"];
-	if (isNil "_wp_config") then {
+	if ((isNil "_wp_config") or
+	    (("BOOL" == (typeName _wp_config)) and (not _wp_config)))  then {
 		_behavior = "AWARE";
 		_speed    = "NORMAL";
 	} else {
-		_behavior = "CARELESS";
-		_speed    = "FULL";
+	      _behavior = "CARELESS";
+	      _speed    = "FULL";
+	       
 	};
         if (isNil "_nearest") then {
 	    _nearest = 0;
