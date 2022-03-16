@@ -155,8 +155,9 @@ DEFMETHOD("Headquarters", "dispatch") ["_self", "_n", "_locations", "_wp_config"
 		_transports = _self getVariable "_transports";
 		_groups = _groups - _transports;
 	};
-	_groups = [_groups, 0, _n] call fnc_subseq;
 	_n = (_n min (count _groups)) min (count _locations);
+	_groups = [_groups, 0, _n] call fnc_subseq;
+	//	_n = (_n min (count _groups)) min (count _locations);
 	if ((random 1) < _nearest) then {
 	    _locations = [_locations, 
 			  [["_a", "_b"], {
@@ -535,14 +536,15 @@ DEFMETHOD("Headquarters", "approach_targets") ["_self",
 					       "_targets",
 					       "_commit",
 					       "_wp_config",
-                                               "_nearest"] DO {
+                                               "_nearest",
+					       "_start_offset"] DO {
 	private ["_image", "_locs", "_nextLocs", "_pairs",
 		 "_locationFinder", "_numToDispatch", "_numDispatched"];
 	_pairs = [_self, "available_pairs"] call fnc_tell;
 	if ((isNil "_commit") or
 	    (not (typeName _commit == "SCALAR"))) then { _commit = count _pairs };
-	if (isNil "_wp_config") then { _wp_config = true };
-        if (isNil "_nearest")   then { _nearest   = false };
+	if (isNil "_wp_config"     ) then { _wp_config      = true };
+        if (isNil "_nearest"       ) then { _nearest        = false };
 	_image = ["TargetImpression", _targets] call fnc_new;
 	_locationFinder = ["LocationFinder"] call fnc_new;
 	[_locationFinder, "configure",
@@ -555,7 +557,16 @@ DEFMETHOD("Headquarters", "approach_targets") ["_self",
 	while { count _locs < _commit } do {
 		[_locationFinder, "obj_tactical_approach",
 		 _image getVariable "_logics", true] call fnc_tell;
-		_nextLocs = [_locationFinder, "run", 3, 3] call fnc_tell;
+		if (not (isNil _start_offset)) then {
+		    _locationFinder setVariable ["center",
+						 [[["_x"], {
+						     [[["_a", "_b"], {_a + _b}] call fnc_lambda,
+						      _x,
+						      _start_offset] call fnc_map
+						  }] call fnc_lambda,
+						  _locationFinder getVariable "center"] call fnc_map];
+		};
+		_nextLocs = [_locationFinder, "run", _commit, 3] call fnc_tell;
 		_nextLocs = [[["_x"], {
 			       not ((surfaceIsWater (position _x)) or
 				    (800 <
@@ -582,7 +593,8 @@ DEFMETHOD("Headquarters", "attack_targets") ["_self",
 					     "_targets",
 					     "_commit",
 					     "_wp_config",
-					     "_nearest"] DO {
+					     "_nearest",
+					     "_start_offset"] DO {
         private ["_image", "_locs", "_nextLocs", "_avail", "_locationFinder",
 		 "_dispatchCount", "_color"];
         if (isNil "_nearest")   then { _nearest   = false };
@@ -611,9 +623,20 @@ DEFMETHOD("Headquarters", "attack_targets") ["_self",
 	 while {count _locs < _commit} do {
 	   [_locationFinder, 
 	    ["obj_tactical_advantage", 
-	     "obj_sniper_nests"] select ([2] call fnc_randint), 
+	     "obj_tactical_advantage", 
+	     "obj_sniper_nests"] select ([3] call fnc_randint), 
 	    _image getVariable "_logics", true] call fnc_tell;
-	   _nextLocs = [_locationFinder, "run", 3, 3] call fnc_tell;
+	   if (not (isNil "_start_offset")) then {
+		    _locationFinder setVariable [
+			 "center",
+			 [[["_x"], {
+			     [[["_a", "_b"], {_a + _b}] call fnc_lambda,
+			      _x,
+			      _start_offset] call fnc_map
+			  }] call fnc_lambda,
+			  _locationFinder getVariable "center"] call fnc_map];
+	   };
+	   _nextLocs = [_locationFinder, "run", _commit, 3] call fnc_tell;
 	   _nextLocs = [[["_x"], {not (surfaceIsWater (position _x))}] 
 			call fnc_lambda, _nextLocs] call fnc_filter;     
 	   _locs append _nextLocs;

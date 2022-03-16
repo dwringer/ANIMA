@@ -171,7 +171,7 @@ DEFMETHOD("CrewUnitGroup", "init_in_place") ["_self", "_men"] DO {
     ["vehicle", "driver", "gunner", "cargo"],
     [_self]] call fnc_mapwith;
   
-  
+    [_self, "board_instant"] call fnc_tell;
   
 } ENDMETHOD;
 
@@ -191,13 +191,14 @@ thread_turret_monitor = [["_man", "_vehicle"], {
 	if (not (_man in (crew _vehicle))) then {
 		_man doMove (position _vehicle);
 		waitUntil {(_man distance _vehicle) < 8};
-		sleep 2 + (random 2);
+		_man assignAsGunner _vehicle;
+		[_man] orderGetIn true;
 	} else {
 		doGetOut _man;
 		waitUntil {not (_man in (crew _vehicle))};
+		_man assignAsGunner _vehicle;
+		_man moveInGunner _vehicle;
 	};
-	_man assignAsGunner _vehicle;
-	_man moveInGunner _vehicle;
 }] call fnc_lambda;
 
 
