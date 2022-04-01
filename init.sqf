@@ -53,7 +53,9 @@ TOV_fnc_EndConvoy = [["_convoyScript", "_convoyGroup"], {
   _convoyGroup enableAttack true;
 }] call fnc_lambda;
 
-
+/////////////////////////////////////////////////////////////////////////////
+// From forums.bohemia.net/forums/topic/226608-simple-convoy-script-release/:
+/////////////////////////////////////////////////////////////////////////////
 TOV_fnc_SimpleConvoy = { 
   params ["_convoyGroup",
 	  ["_convoySpeed",      50],
@@ -77,12 +79,16 @@ TOV_fnc_SimpleConvoy = {
 	  (_pushThrough || (behaviour _x != "COMBAT"))) then {
           (vehicle _x) doFollow (leader _convoyGroup);
 	};	
-    } forEach (units _convoyGroup)-(crew (vehicle (leader _convoyGroup)))-allPlayers;
+    } forEach ((units _convoyGroup) -
+               (crew (vehicle (leader _convoyGroup))) -
+	       allPlayers);
     {
       (vehicle _x) setConvoySeparation _convoySeparation;
     } forEach (units _convoyGroup);
   }; 
 };
+/////////////////////////////////////////////////////////////////////////////
+
 
 fnc_emergency_disembark = [["_leader"], { 
   private _thread = _leader spawn {  
@@ -159,6 +165,7 @@ fnc_units = {
   _acc
 };
 
+// Trigger flagged by hit/killed EH on convoy vehicles:
 // _thread = [] spawn {  
 //   [Thread_Convoy, Opf_Group_Convoy] spawn TOV_fnc_EndConvoy; 
 //   { [_x] call fnc_emergency_disembark } 
@@ -174,6 +181,9 @@ fnc_units = {
 
 //fnc_attach_strobe = [["_unit"], {
 
+/////////////////////////////////////////////
+// Requires MS_IFF_Strobe addon by Fat_Lurch:
+/////////////////////////////////////////////
 fnc_attach_strobe = {
   params ["_unit"];
   private ["_thread"];
@@ -188,6 +198,7 @@ fnc_attach_strobe = {
     };
  };
 };
+/////////////////////////////////////////////
 
 fnc_clear_waypoints = [["_group"], {
     private ["_waypoints"];
