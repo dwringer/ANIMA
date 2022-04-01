@@ -24,20 +24,20 @@
 
 DEFCLASS("Particle") ["_self", "_color"] DO {
 	/* Initialize the particle */
-	// private ["_markerColor"];
+	private ["_markerColor"];
 	SUPER_ARGS("Marker", _self)
 	        [position _self, "ELLIPSE", nil, [5, 5]]
 	ENDARGS;
 	[_self, "_setf", "extraDimensions", []] call fnc_tell;
 	[_self, "_setf", "objectives", []] call fnc_tell;
-	// if (isNil "_color") then {
-	// 	_markerColor = "ColorOrange";
-	// } else {
-	// 	_markerColor = _color;
-	// };
-	// [_self, "set_color", _markerColor] call fnc_tell;
-	// [_self, "set_alpha", 0.95] call fnc_tell;
-	// [_self, "show"] call fnc_tell;
+	if (isNil "_color") then {
+		_markerColor = "ColorOrange";
+	} else {
+		_markerColor = _color;
+	};
+	[_self, "set_color", _markerColor] call fnc_tell;
+	[_self, "set_alpha", 0.95] call fnc_tell;
+	[_self, "show"] call fnc_tell;
 	_self
 } ENDCLASS;
 
