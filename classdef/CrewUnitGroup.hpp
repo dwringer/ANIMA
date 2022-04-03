@@ -65,6 +65,248 @@ DEFMETHOD("CrewUnitGroup", "assign") ["_self", "_unit", "_role"] DO {
 	 _unit] call fnc_tell
 } ENDMETHOD;
 
+DEFMETHOD("CrewUnitGroup", "init_units") ["_self", "_units"] DO {
+  private ["_vehicle"];
+  private _vehicles = [];
+  private _men = [];
+  {
+    _vehicle = vehicle _x;
+    if (((_vehicle isKindOf "LandVehicle") or
+	 (_vehicle isKindOf "Air")) and
+	(not (_vehicle in _vehicles))) then {
+	_vehicles = _vehicles + [_vehicle];
+    } else {
+        _men = _men + [_vehicle];
+    };
+  } forEach _units;
+  // Now sort all men by leadership status/rank:
+  _men = [[["_pair"], { _pair select 0 }] call fnc_lambda,
+          [[[["_x"], {
+              private ["_n"];
+	      if (_x == (leader (group _x))) then {
+	        _n = -1
+	      } else {
+	        switch (rank _x) do {
+		  case "PRIVATE":    { _n = 6 };
+		  case "CORPORAL":   { _n = 5 };
+	          case "SERGEANT":   { _n = 4 };
+	          case "LIEUTENANT": { _n = 3 };
+	          case "CAPTAIN":    { _n = 2 };
+	          case "MAJOR":      { _n = 1 };
+		  case "COLONEL":    { _n = 0 };
+	        };
+	      };
+              [_x, _n]
+	    }] call fnc_lambda,
+	    _men] call fnc_map,
+	   [["_a", "_b"], {
+	     (_a select 1) < (_b select 1)
+	   }] call fnc_lambda] call fnc_sorted] call fnc_map;
+  _self setVariable ["men", _men];
+  _self setVariable ["vehicles", _vehicles];
+} ENDMETHOD;
+
+DEFMETHOD("CrewUnitGroup", "make_assignments") ["_self"] DO {
+  private ["_vehicle", "_slots", "_fn_slot", "_crewTurrets"];
+  private _men = _self getVariable "men";
+  private _vehicles = _self getVariable "vehicles";
+  private _commanderSlots    = [];
+  private _gunnerSlots       = [];
+  private _turretSlots       = [];
+  private _personTurretSlots = [];
+  private _cargoSlots        = [];
+  {
+    _vehicle = _x;
+    _crewTurrets = _vehicle call BIS_fnc_vehicleCrewTurrets;
+    _fn_slot = [["_obj", "_type", "_cidx", "_tpath", "_pturret", "_aidx"], {
+      private _entry = [_vehicle, _cidx, _aidx, _tpath];
+      switch (_type) do {
+	  case "commander": { _commanderSlots = _commanderSlots + [_entry] };
+          case "gunner":    {    _gunnerSlots = _gunnerSlots    + [_entry] };
+	  case "turret":    {
+	    if (_pturret) then {
+	      _personTurretSlots = _personTurretSlots + [_entry];
+	    } else {
+	      if (_tpath in _crewTurrets) then {
+	        _turretSlots     = _turretSlots       + [_entry];
+	      };
+	    };
+	  };
+          case "cargo":     {     _cargoSlots = _cargoSlots     + [_entry] };
+      };
+    }] call fnc_lambda;
+    _slots = fullCrew [_vehicle, "", true];
+    // Cargo-filtered slots need to be first so we can count action indices:
+    private _filteredSlots = fullCrew [_vehicle, "cargo", true];
+    _slots = _filteredSlots + (_slots - _filteredSlots);
+    for "_i" from 0 to ((count _slots) - 1) do {
+      ((_slots select _i)+[_i]) call _fn_slot;
+    };
+  } forEach _vehicles;
+  private _commanders = [];
+  if (0 < (count _commanderSlots)) then {
+      _commanders = [_men, 0, count _commanderSlots] call fnc_subseq;
+  };
+  private _remain = [_men, count _commanders, count _men] call fnc_subseq;
+  private _drivers = [_remain + _commanders,
+  		      0, count _vehicles] call fnc_subseq;
+  _remain = _remain - _drivers;
+  private _gunners = [];
+  if ((count _gunnerSlots) < ((count _remain) + (count _commanders))) then {
+    if (0 < (count _gunnerSlots)) then {
+      _gunners = [_remain + _commanders, 0, count _gunnerSlots] call fnc_subseq;
+    };
+  } else {
+    _gunners = _remain + _commanders;
+  };
+  _remain = _remain - _gunners;
+  _commanders = (_commanders - _gunners) - _drivers;
+  if ((count _commanderSlots) < (count _commanders)) then {
+    _remain = ([_commanders, count _commanderSlots, 0] call fnc_subseq)
+      + _remain;
+    if (0 < (count _commanderSlots)) then {
+      _commanders = [_commanders, 0, count _commanderSlots] call fnc_subseq;
+    } else {
+      _commanders = [];
+    };
+  };
+  private _turrets = [];
+  if ((count _turretSlots) < (count _remain)) then {
+    if (0 < (count _turretSlots)) then {
+      _turrets = [_remain, 0, count _turretSlots] call fnc_subseq;
+    };  
+  } else {
+    _turrets = _remain;
+  };
+  _remain = _remain - _turrets;
+  private _personTurrets = [];
+  if ((count _personTurretSlots) < (count _remain)) then {
+    if (0 < (count _personTurretSlots)) then {
+      _personTurrets = [_remain, 0, count _personTurretSlots] call fnc_subseq;
+    };
+  } else {
+    _personTurrets = _remain;
+  };
+  _remain = _remain - _personTurrets;
+  private _cargo = [];
+  if ((count _cargoSlots) < (count _remain)) then {
+    if (0 < (count _cargoSlots)) then {
+      _cargo = [_remain, 0, count _cargoSlots] call fnc_subseq;
+    };
+  } else {
+    _cargo = _remain;
+  };
+  _remain = _remain - _cargo;
+  [["commanders", [[["_a", "_b"], {[_a, _b]}] call fnc_lambda,
+		  _commanders, _commanderSlots] call fnc_map],
+   ["drivers", [[["_a", "_b"], {[_a, [_b, -1, -1, []]]}] call fnc_lambda,
+	       _drivers, _vehicles] call fnc_map],
+   ["gunners", [[["_a", "_b"], {[_a, _b]}] call fnc_lambda,
+	       _gunners, _gunnerSlots] call fnc_map],
+   ["turrets", [[["_a", "_b"], {[_a, _b]}] call fnc_lambda,
+	       _turrets, _turretSlots] call fnc_map],
+   ["personTurrets", [[["_a", "_b"], {[_a, _b]}] call fnc_lambda,
+		     _personTurrets, _personTurretSlots] call fnc_map],
+   ["cargo", [[["_a", "_b"], {[_a, _b]}] call fnc_lambda,
+	     _cargo, _cargoSlots] call fnc_map]
+   //   ["remain", _remain]
+   ]
+} ENDMETHOD;
+
+DEFMETHOD("CrewUnitGroup", "assignments_from") ["_self", "_units"] DO {
+  [_self, "init_units", _units] call fnc_tell;
+  ([_self, "make_assignments"] call fnc_tell)
+} ENDMETHOD;
+
+DEFMETHOD("CrewUnitGroup", "mount_up") ["_self"] DO {
+  private ["_type", "_maps", "_map", "_unit", "_mapping", "_vehicle",
+	   "_cargoIndex", "_cargoActionIndex", "_turretPath"];
+  private _assignments = [_self, "make_assignments"] call fnc_tell;
+  private _assigned = [];
+  {
+    _type  = _x select 0;
+    _maps  = _x select 1;
+    for "_i" from 0 to ((count _maps) - 1) do {
+      _map = _maps select _i;
+      _unit    = _map select 0;
+      _mapping = _map select 1;
+      _vehicle          = _mapping select 0;
+      _cargoIndex       = _mapping select 1;
+      _cargoActionIndex = _mapping select 2;
+      _turretPath       = _mapping select 3;
+      switch (_type) do {
+	  case "commanders": { _unit assignAsCommander _vehicle };
+	  case "drivers": { _unit assignAsDriver _vehicle };
+	  case "gunners": { _unit assignAsGunner _vehicle };
+          case "turrets": { _unit assignAsTurret [_vehicle, _turretPath] };
+          case "personTurrets": {
+            private _thread = [_unit, _vehicle, _turretPath, _cargoActionIndex]
+	                       spawn {
+              params ["_unit", "_vehicle", "_turretPath", "_cargoActionIndex"];
+	      while { 8 <= (_unit distance _vehicle) } do {
+		_unit doMove (position _vehicle);
+		waitUntil { sleep 0.5; (speed _unit) == 0 };
+	      };
+	      [_unit] allowGetIn true;
+	      _unit action ["getInTurret", _vehicle, _turretPath];
+	      _unit assignAsTurret [_vehicle, _turretPath];
+	    };
+	  };
+	  case "cargo": {
+	    private _thread = [_unit, _vehicle, _cargoIndex, _cargoActionIndex]
+	                       spawn {
+              params ["_unit", "_vehicle", "_cargoIndex", "_cargoActionIndex"];
+	      while { 8 <= (_unit distance _vehicle) } do {
+		_unit doMove (position _vehicle);
+		waitUntil { sleep 0.5; (speed _unit) == 0 };
+	      };
+	      [_unit] allowGetIn true;
+	      _unit assignAsCargo _vehicle;
+	      _unit action ["getInCargo", _vehicle, _cargoActionIndex];
+	    };
+	  };
+      };
+      _assigned = _assigned + [_unit];
+    };
+  } forEach _assignments;
+  _assigned orderGetIn true;
+} ENDMETHOD;
+
+DEFMETHOD("CrewUnitGroup", "mount_instant") ["_self"] DO {
+  private ["_type", "_maps", "_map", "_unit", "_mapping", "_vehicle",
+	   "_cargoIndex", "_cargoActionIndex", "_turretPath"];
+  private _assignments = [_self, "make_assignments"] call fnc_tell;
+  {
+    _type  = _x select 0;
+    _maps  = _x select 1;
+    for "_i" from 0 to ((count _maps) - 1) do {
+      _map = _maps select _i;
+      _unit    = _map select 0;
+      _mapping = _map select 1;
+      _vehicle          = _mapping select 0;
+      _cargoIndex       = _mapping select 1;
+      _cargoActionIndex = _mapping select 2;
+      _turretPath       = _mapping select 3;
+      switch (_type) do {
+	  case "commanders": { _unit assignAsCommander _vehicle;
+			       _unit moveInCommander   _vehicle;
+	                       _vehicle setEffectiveCommander _unit; };
+	  case "drivers": {    _unit assignAsDriver    _vehicle;
+                  	       _unit moveInDriver      _vehicle; };
+	  case "gunners": {    _unit assignAsGunner    _vehicle;
+	                       _unit moveInGunner      _vehicle; };
+          case "turrets": {
+	    _unit assignAsTurret [_vehicle, _turretPath];
+	    _unit moveInTurret   [_vehicle, _turretPath]; };
+	  case "personTurrets": {
+	    _unit assignAsCargo _vehicle;
+	    _unit moveInCargo [_vehicle, _cargoIndex]; };
+	  case "cargo": {      _unit assignAsCargo     _vehicle;
+                               _unit moveInCargo       _vehicle; };
+      };
+    };
+  } forEach _assignments;
+} ENDMETHOD;
 
 DEFMETHOD("CrewUnitGroup", "auto_assign") ["_self", "_units"] DO {
 	/* Automatically assign roles to array of units + vehicle(s) */
