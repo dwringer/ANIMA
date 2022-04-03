@@ -117,28 +117,49 @@ DEFMETHOD("CrewUnitGroup", "make_assignments") ["_self"] DO {
   private _cargoSlots        = [];
   {
     _vehicle = _x;
-    _crewTurrets = _vehicle call BIS_fnc_vehicleCrewTurrets;
+    _crewTurrets = [_vehicle call BIS_fnc_vehicleCrewTurrets,
+		    1, 0] call fnc_subseq;
     _fn_slot = [["_obj", "_type", "_cidx", "_tpath", "_pturret", "_aidx"], {
       private _entry = [_vehicle, _cidx, _aidx, _tpath];
       switch (_type) do {
-	  case "commander": { _commanderSlots = _commanderSlots + [_entry] };
-          case "gunner":    {    _gunnerSlots = _gunnerSlots    + [_entry] };
+	  case "commander": {
+	    _commanderSlots = _commanderSlots + [_entry];
+	    if (_tpath in _crewTurrets) then {
+	      _crewTurrets = _crewTurrets - [_tpath];
+	    };
+	  };
+          case "gunner":    {
+	    if (_tpath in _crewTurrets) then {
+	      _gunnerSlots = _gunnerSlots    + [_entry];
+	      _crewTurrets = _crewTurrets - [_tpath];
+	    } else {
+	      _gunnerSlots = _gunnerSlots +
+		[[_vehicle, _cidx, _aidx, _crewTurrets select 0]];
+	      _crewTurrets = [_crewTurrets, 1, 0] call fnc_subseq;
+	    };
+	  };
 	  case "turret":    {
 	    if (_pturret) then {
 	      _personTurretSlots = _personTurretSlots + [_entry];
 	    } else {
 	      if (_tpath in _crewTurrets) then {
 	        _turretSlots     = _turretSlots       + [_entry];
+		_crewTurrets = _crewTurrets - [_tpath];
 	      };
 	    };
 	  };
           case "cargo":     {     _cargoSlots = _cargoSlots     + [_entry] };
       };
     }] call fnc_lambda;
-    _slots = fullCrew [_vehicle, "", true];
-    // Cargo-filtered slots need to be first so we can count action indices:
-    private _filteredSlots = fullCrew [_vehicle, "cargo", true];
-    _slots = _filteredSlots + (_slots - _filteredSlots);
+    // _slots = fullCrew [_vehicle, "", true];
+    // // Cargo-filtered slots need to be first so we can count action indices:
+    // private _filteredSlots = fullCrew [_vehicle, "cargo", true];
+    // _slots = _filteredSlots + (_slots - _filteredSlots);
+    _slots = ((fullCrew [_vehicle, "cargo", true]) +
+	      (fullCrew [_vehicle, "driver", true]) +
+              (fullCrew [_vehicle, "commander", true]) +
+	      (fullCrew [_vehicle, "gunner", true]) +
+	      (fullCrew [_vehicle, "turret", true]));
     for "_i" from 0 to ((count _slots) - 1) do {
       ((_slots select _i)+[_i]) call _fn_slot;
     };
@@ -170,7 +191,7 @@ DEFMETHOD("CrewUnitGroup", "make_assignments") ["_self"] DO {
       _commanders = [];
     };
   };
-  private _turrets = [];
+   private _turrets = [];
   if ((count _turretSlots) < (count _remain)) then {
     if (0 < (count _turretSlots)) then {
       _turrets = [_remain, 0, count _turretSlots] call fnc_subseq;
@@ -237,7 +258,7 @@ DEFMETHOD("CrewUnitGroup", "mount_up") ["_self"] DO {
       switch (_type) do {
 	  case "commanders": { _unit assignAsCommander _vehicle };
 	  case "drivers": { _unit assignAsDriver _vehicle };
-	  case "gunners": { _unit assignAsGunner _vehicle };
+	  case "gunners";
           case "turrets": { _unit assignAsTurret [_vehicle, _turretPath] };
           case "personTurrets": {
             private _thread = [_unit, _vehicle, _turretPath, _cargoActionIndex]
@@ -293,14 +314,12 @@ DEFMETHOD("CrewUnitGroup", "mount_instant") ["_self"] DO {
 	                       _vehicle setEffectiveCommander _unit; };
 	  case "drivers": {    _unit assignAsDriver    _vehicle;
                   	       _unit moveInDriver      _vehicle; };
-	  case "gunners": {    _unit assignAsGunner    _vehicle;
-	                       _unit moveInGunner      _vehicle; };
-          case "turrets": {
-	    _unit assignAsTurret [_vehicle, _turretPath];
-	    _unit moveInTurret   [_vehicle, _turretPath]; };
+          case "gunners";
+          case "turrets";
 	  case "personTurrets": {
-	    _unit assignAsCargo _vehicle;
-	    _unit moveInCargo [_vehicle, _cargoIndex]; };
+	    _unit assignAsTurret [_vehicle, _turretPath];
+	    _unit moveInTurret   [_vehicle, _turretPath];
+	  };
 	  case "cargo": {      _unit assignAsCargo     _vehicle;
                                _unit moveInCargo       _vehicle; };
       };
