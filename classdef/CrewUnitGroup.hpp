@@ -106,7 +106,7 @@ DEFMETHOD("CrewUnitGroup", "init_units") ["_self", "_units"] DO {
   _self setVariable ["vehicles", _vehicles];
 } ENDMETHOD;
 
-DEFMETHOD("CrewUnitGroup", "make_assignments") ["_self"] DO {
+DEFMETHOD("CrewUnitGroup", "make_assignments") ["_self", "_asPassengers"] DO {
   private ["_vehicle", "_slots", "_fn_slot", "_crewTurrets"];
   private _men = _self getVariable "men";
   private _vehicles = _self getVariable "vehicles";
@@ -115,6 +115,9 @@ DEFMETHOD("CrewUnitGroup", "make_assignments") ["_self"] DO {
   private _turretSlots       = [];
   private _personTurretSlots = [];
   private _cargoSlots        = [];
+  if (isNil "_asPassengers") then {
+    _asPassengers = false;
+  };
   {
     _vehicle = _x;
     _crewTurrets = [_vehicle call BIS_fnc_vehicleCrewTurrets,
@@ -123,28 +126,34 @@ DEFMETHOD("CrewUnitGroup", "make_assignments") ["_self"] DO {
       private _entry = [_vehicle, _cidx, _aidx, _tpath];
       switch (_type) do {
 	  case "commander": {
-	    _commanderSlots = _commanderSlots + [_entry];
-	    if (_tpath in _crewTurrets) then {
-	      _crewTurrets = _crewTurrets - [_tpath];
+	    if (not _asPassengers) then {
+	      _commanderSlots = _commanderSlots + [_entry];
+	      if (_tpath in _crewTurrets) then {
+		_crewTurrets = _crewTurrets - [_tpath];
+	      };
 	    };
 	  };
           case "gunner":    {
-	    if (_tpath in _crewTurrets) then {
-	      _gunnerSlots = _gunnerSlots    + [_entry];
-	      _crewTurrets = _crewTurrets - [_tpath];
-	    } else {
-	      _gunnerSlots = _gunnerSlots +
-		[[_vehicle, _cidx, _aidx, _crewTurrets select 0]];
-	      _crewTurrets = [_crewTurrets, 1, 0] call fnc_subseq;
+	    if (not _asPassengers) then {
+	      if (_tpath in _crewTurrets) then {
+		_gunnerSlots = _gunnerSlots    + [_entry];
+		_crewTurrets = _crewTurrets - [_tpath];
+	      } else {
+		_gunnerSlots = _gunnerSlots +
+		  [[_vehicle, _cidx, _aidx, _crewTurrets select 0]];
+		_crewTurrets = [_crewTurrets, 1, 0] call fnc_subseq;
+	      };
 	    };
 	  };
 	  case "turret":    {
 	    if (_pturret) then {
 	      _personTurretSlots = _personTurretSlots + [_entry];
 	    } else {
-	      if (_tpath in _crewTurrets) then {
-	        _turretSlots     = _turretSlots       + [_entry];
-		_crewTurrets = _crewTurrets - [_tpath];
+	      if (not _asPassengers) then {
+		if (_tpath in _crewTurrets) then {
+		  _turretSlots     = _turretSlots       + [_entry];
+		  _crewTurrets = _crewTurrets - [_tpath];
+		};
 	      };
 	    };
 	  };
@@ -169,9 +178,12 @@ DEFMETHOD("CrewUnitGroup", "make_assignments") ["_self"] DO {
       _commanders = [_men, 0, count _commanderSlots] call fnc_subseq;
   };
   private _remain = [_men, count _commanders, count _men] call fnc_subseq;
-  private _drivers = [_remain + _commanders,
-  		      0, count _vehicles] call fnc_subseq;
-  _remain = _remain - _drivers;
+  private _drivers = [];
+  if (not _asPassengers) then {
+    _drivers = [_remain + _commanders,
+		0, count _vehicles] call fnc_subseq;
+    _remain = _remain - _drivers;
+  };
   private _gunners = [];
   if ((count _gunnerSlots) < ((count _remain) + (count _commanders))) then {
     if (0 < (count _gunnerSlots)) then {
@@ -232,17 +244,22 @@ DEFMETHOD("CrewUnitGroup", "make_assignments") ["_self"] DO {
 	     _cargo, _cargoSlots] call fnc_map]
    //   ["remain", _remain]
    ]
-} ENDMETHOD;
+} ENDMETHODV;
 
-DEFMETHOD("CrewUnitGroup", "assignments_from") ["_self", "_units"] DO {
+DEFMETHOD("CrewUnitGroup", "assignments_from") ["_self",
+						"_units",
+						"_asPassengers"] DO {
+  if (isNil "_asPassengers") then { _asPassengers = false };
   [_self, "init_units", _units] call fnc_tell;
-  ([_self, "make_assignments"] call fnc_tell)
-} ENDMETHOD;
+  ([_self, "make_assignments", _asPassengers] call fnc_tell)
+} ENDMETHODV;
 
-DEFMETHOD("CrewUnitGroup", "mount_up") ["_self"] DO {
+DEFMETHOD("CrewUnitGroup", "mount_up") ["_self", "_asPassengers"] DO {
   private ["_type", "_maps", "_map", "_unit", "_mapping", "_vehicle",
 	   "_cargoIndex", "_cargoActionIndex", "_turretPath"];
-  private _assignments = [_self, "make_assignments"] call fnc_tell;
+  if (isNil "_asPassengers") then { _asPassengers = false };
+  private _assignments = [_self, "make_assignments",
+			  _asPassengers] call fnc_tell;
   private _assigned = [];
   {
     _type  = _x select 0;
@@ -266,7 +283,10 @@ DEFMETHOD("CrewUnitGroup", "mount_up") ["_self"] DO {
               params ["_unit", "_vehicle", "_turretPath", "_cargoActionIndex"];
 	      while { 8 <= (_unit distance _vehicle) } do {
 		_unit doMove (position _vehicle);
-		waitUntil { sleep 0.5; (speed _unit) == 0 };
+		waitUntil { sleep 0.5;
+		  (((_unit distance _vehicle) < 8) or
+			     ((speed _unit) == 0))
+		};
 	      };
 	      [_unit] allowGetIn true;
 	      _unit action ["getInTurret", _vehicle, _turretPath];
@@ -279,7 +299,10 @@ DEFMETHOD("CrewUnitGroup", "mount_up") ["_self"] DO {
               params ["_unit", "_vehicle", "_cargoIndex", "_cargoActionIndex"];
 	      while { 8 <= (_unit distance _vehicle) } do {
 		_unit doMove (position _vehicle);
-		waitUntil { sleep 0.5; (speed _unit) == 0 };
+		waitUntil { sleep 0.5;
+		            (((_unit distance _vehicle) < 8) or
+			     ((speed _unit) == 0))
+		};
 	      };
 	      [_unit] allowGetIn true;
 	      _unit assignAsCargo _vehicle;
@@ -291,12 +314,12 @@ DEFMETHOD("CrewUnitGroup", "mount_up") ["_self"] DO {
     };
   } forEach _assignments;
   _assigned orderGetIn true;
-} ENDMETHOD;
+} ENDMETHODV;
 
 DEFMETHOD("CrewUnitGroup", "mount_instant") ["_self"] DO {
   private ["_type", "_maps", "_map", "_unit", "_mapping", "_vehicle",
 	   "_cargoIndex", "_cargoActionIndex", "_turretPath"];
-  private _assignments = [_self, "make_assignments"] call fnc_tell;
+  private _assignments = [_self, "make_assignments", true] call fnc_tell;
   {
     _type  = _x select 0;
     _maps  = _x select 1;
