@@ -316,10 +316,12 @@ DEFMETHOD("CrewUnitGroup", "mount_up") ["_self", "_asPassengers"] DO {
   _assigned orderGetIn true;
 } ENDMETHODV;
 
-DEFMETHOD("CrewUnitGroup", "mount_instant") ["_self"] DO {
+DEFMETHOD("CrewUnitGroup", "mount_instant") ["_self", "_asPassengers"] DO {
   private ["_type", "_maps", "_map", "_unit", "_mapping", "_vehicle",
 	   "_cargoIndex", "_cargoActionIndex", "_turretPath"];
-  private _assignments = [_self, "make_assignments", true] call fnc_tell;
+  if (isNil "_asPassengers") then { _asPassengers = false };
+  private _assignments = [_self, "make_assignments",
+			  _asPassengers] call fnc_tell;
   {
     _type  = _x select 0;
     _maps  = _x select 1;
