@@ -110,6 +110,7 @@ DEFMETHOD("CrewUnitGroup", "make_assignments") ["_self", "_asPassengers"] DO {
   private ["_vehicle", "_slots", "_fn_slot", "_crewTurrets"];
   private _men = _self getVariable "men";
   private _vehicles = _self getVariable "vehicles";
+  private _commandedVehicles = [];
   private _commanderSlots    = [];
   private _gunnerSlots       = [];
   private _turretSlots       = [];
@@ -126,11 +127,25 @@ DEFMETHOD("CrewUnitGroup", "make_assignments") ["_self", "_asPassengers"] DO {
       private _entry = [_vehicle, _cidx, _aidx, _tpath];
       switch (_type) do {
 	  case "commander": {
-	    if (not _asPassengers) then {
-	      _commanderSlots = _commanderSlots + [_entry];
-	      if (_tpath in _crewTurrets) then {
-		_crewTurrets = _crewTurrets - [_tpath];
-	      };
+	    if (_vehicle in _commandedVehicles) then {
+		if (_pturret) then {
+		    _personTurretSlots = _personTurretSlots + [_entry];
+		} else {
+		    if (not _asPassengers) then {
+			if (_tpath in _crewTurrets) then {
+			    _turretSlots     = _turretSlots       + [_entry];
+			    _crewTurrets = _crewTurrets - [_tpath];
+			};
+		    };
+		};
+	    } else {
+		if (not _asPassengers) then {
+		    _commanderSlots = _commanderSlots + [_entry];
+		    if (_tpath in _crewTurrets) then {
+			_crewTurrets = _crewTurrets - [_tpath];
+		    };
+		};
+		_commandedVehicles = _commandedVehicles + [_vehicle];
 	    };
 	  };
           case "gunner":    {
@@ -138,11 +153,12 @@ DEFMETHOD("CrewUnitGroup", "make_assignments") ["_self", "_asPassengers"] DO {
 	      if (_tpath in _crewTurrets) then {
 		_gunnerSlots = _gunnerSlots    + [_entry];
 		_crewTurrets = _crewTurrets - [_tpath];
-	      } else {
-		_gunnerSlots = _gunnerSlots +
-		  [[_vehicle, _cidx, _aidx, _crewTurrets select 0]];
-		_crewTurrets = [_crewTurrets, 1, 0] call fnc_subseq;
 	      };
+//		    else {
+//		_gunnerSlots = _gunnerSlots +
+//		  [[_vehicle, _cidx, _aidx, _crewTurrets select 0]];
+//		_crewTurrets = [_crewTurrets, 1, 0] call fnc_subseq;
+//	      };
 	    };
 	  };
 	  case "turret":    {
@@ -334,9 +350,11 @@ DEFMETHOD("CrewUnitGroup", "mount_instant") ["_self", "_asPassengers"] DO {
       _cargoActionIndex = _mapping select 2;
       _turretPath       = _mapping select 3;
       switch (_type) do {
-	  case "commanders": { _unit assignAsCommander _vehicle;
-			       _unit moveInCommander   _vehicle;
-	                       _vehicle setEffectiveCommander _unit; };
+	  case "commanders": {
+	      _unit assignAsCommander _vehicle;
+	      _unit moveInCommander   _vehicle;
+	      _vehicle setEffectiveCommander _unit;
+	  };
 	  case "drivers": {    _unit assignAsDriver    _vehicle;
                   	       _unit moveInDriver      _vehicle; };
           case "gunners";
