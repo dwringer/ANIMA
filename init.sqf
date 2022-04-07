@@ -12,6 +12,7 @@
 #include <classdef\CrewUnitGroup.hpp>
 #include <classdef\Headquarters.hpp>
 
+#include <classdef\VehicleTargets.hpp>
 #include <classdef\LogicalGroup.hpp>
 
 private ["_randomizerThread"];
