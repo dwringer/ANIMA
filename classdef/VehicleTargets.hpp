@@ -56,9 +56,9 @@ DEFCLASS("VehicleTargets") ["_self", "_trigger", "_triggerList", "_count",
 	    _vehicle = _x;
 	    if (_vehicle isKindOf "LandVehicle") then {
 		_type = typeOf _vehicle;
-		if (not (_type in _classNames)) then {
-		    _classNames = _classNames + [_type];
-		};
+//		if (not (_type in _classNames)) then {
+		_classNames = _classNames + [_type];
+//		}; (Removed uniqueness-check, so we can weight probability)
 		{ deleteVehicle _x } forEach (crew _vehicle) + [_vehicle];
 	    };
 	} forEach _triggerList;
@@ -79,9 +79,9 @@ DEFCLASS("VehicleTargets") ["_self", "_trigger", "_triggerList", "_count",
     private _triggerAreaSpec = triggerArea _trigger;
     private _radius = ((_triggerAreaSpec select 0) min
 		       (_triggerAreaSpec select 1));
-    private _finder = ["LocationFinder", 5 max (1.6*(_count))] call fnc_new;
+    private _finder = ["LocationFinder", 5 max (ceil (3.1*(_count)))] call fnc_new;
     [_finder, "configure", [["center", [_pos]],
-			    ["radius", _radius * (0.408 + (random 0.42))],
+			    ["radius", _radius * 0.618],
 			    ["allowSingleBins", false]]
     ] call fnc_tell;
     private _assignments = [["trigger", _trigger]];
@@ -96,6 +96,7 @@ DEFCLASS("VehicleTargets") ["_self", "_trigger", "_triggerList", "_count",
 	OPT_fnc_surface_is_not_water,
 	OPT_fnc_distance_to_roads
     ];
+    private _finalSortWeights = [0, 2, 1, 2];
     if (not isNil "_observers") then {
 	_assignments = _assignments + [["targets", _observers]];
 	_objectives = _objectives + [
@@ -104,12 +105,13 @@ DEFCLASS("VehicleTargets") ["_self", "_trigger", "_triggerList", "_count",
 	    OPT_fnc_distance_from_targets,
 	    OPT_fnc_long_distance_to_targets
 	];
+	_finalSortWeights = _finalSortWeights + [5, 8, 3, 1];
     };
     if (not isNil "_avoid") then {
 	_assignments = _assignments + [["avoid", _avoid]];
 	_objectives = _objectives + [
 	    [false, 0, 1,
-	     '[_x, _x getVariable "avoid", 1.6, true]',
+	     '[_x, _x getVariable "avoid", 2.5, true]',
 	     fnc_LOS_to_array] call fnc_to_cost_function,
 	    [true, 25, 50,
 	     '[position _x,
@@ -118,10 +120,36 @@ DEFCLASS("VehicleTargets") ["_self", "_trigger", "_triggerList", "_count",
 	        call fnc_vector_mean]',
 	     fnc_euclidean_distance] call fnc_to_cost_function
 	];
+	_finalSortWeights = _finalSortWeights + [13, 5];
     };
+    _assignments = _assignments + [["finalSortWeights", _finalSortWeights]];
     [_finder, "configure",
      [["objectives", _objectives],
-      ["assignments", _assignments]]] call fnc_tell;
+      ["assignments", _assignments],
+      ["postSort", [["_a", "_b"], {
+	  private ["_scoreA", "_scoreB",
+		   "_accA",   "_accB",
+		   "_countA", "_countB"];
+          private _finalSortWeights = _a getVariable "finalSortWeights";
+	  _accA = 0;
+	  _accB = 0;
+	  _countA = 0;
+	  _countB = 0;
+	  // The following two methods use caching, don't worry:
+	  _scoreA = [_a, "evaluate_objectives"] call fnc_tell;
+	  _scoreB = [_b, "evaluate_objectives"] call fnc_tell;
+	  [[["_score", "_weight"], {
+	      _accA   = _accA   + (_score * _weight);
+	      _countA = _countA + _weight;
+	   }] call fnc_lambda,
+	   _scoreA, _finalSortWeights] call fnc_mapnil;
+	  [[["_score", "_weight"], {
+	      _accB   = _accB   + (_score * _weight);
+	      _countB = _countB + _weight;
+	   }] call fnc_lambda,
+	   _scoreB, _finalSortWeights] call fnc_mapnil;
+	  ((_accA / _countA) < (_accB / _countB))
+      }] call fnc_lambda]]] call fnc_tell;
     _self setVariable ["finder", _finder];
     _self setVariable ["count", _count];
     _self setVariable ["trigger", _trigger];
@@ -135,14 +163,30 @@ DEFMETHOD("VehicleTargets", "get_logics") ["_self"] DO {
     while { (count _logics) < _count } do {
 	_logics = _logics +
 	    ([_self getVariable "finder", "run",
-	      _count - (count _logics), 3] call fnc_tell);
+	      (_count - (count _logics)) + 2, 3] call fnc_tell);
 	_logics = [[["_logic"], {
-	             private _check = 
-	               (({
-			   ([position _x, position _logic]
-			    call fnc_euclidean_distance) < 7
-		        } count _logics) < 2) and
-	               (_logic inArea _trigger);
+		     private _targets = _logic getVariable "targets";
+	             private _avoid   = _logic getVariable "avoid";
+	             private _score   = [_logic, "evaluate_objectives"] call fnc_tell;
+	             private _check = true;
+	             if (not isNil "_targets") then {
+			 if (((_score select 4) == 1) and ((_score select 5) == 1)) then {
+			     _check = false;
+			 } else {
+			     if (not isNil "_avoid") then {
+			         if (0.1 < (_score select 8)) then { _check = false };
+			     };
+			 };
+		     } else {
+			 if (not isNil "_avoid") then {
+			     if (0.1 < (_score select 4)) then { _check = false };
+			 };
+		     };
+	             _check = (_check and (_logic inArea _trigger) and
+			       (({
+				   ([position _x, position _logic]
+				    call fnc_euclidean_distance) < 7
+		               } count _logics) < 2));
 	             if (not _check) then {
 			 [_logic, "hide"] call fnc_tell;
 			 deleteVehicle _logic;
@@ -200,8 +244,6 @@ DEFMETHOD("VehicleTargets", "spawn") ["_self", "_alive", "_priority"] DO {
     } forEach _logics;
     {
 	_position = _x select 0;
-	_position = [_position, 0, 10, 5, 0, 0.25, 0, [], [_position]]
-                     call BIS_fnc_findSafePos;
 	_target   = _x select 1;
 	_vehicle  = ((_classes select ([0, count _classes] call fnc_randint))
 		     createVehicle _position);
@@ -217,8 +259,9 @@ DEFMETHOD("VehicleTargets", "spawn") ["_self", "_alive", "_priority"] DO {
 	    if (not isNull _target) then {
 		_vehicle doWatch _target;
 	    };
+	    (driver _vehicle) disableAI "MOVE";
 	};
-	_vehicle engineOn true;
+	_vehicle engineOn true; // but, crew turns it back off.
 	_vehicles = _vehicles + [_vehicle];
     } forEach _toSpawn;
     _vehicles
