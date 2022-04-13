@@ -50,18 +50,31 @@
 DEFCLASS("VehicleTargets") ["_self", "_trigger", "_triggerList", "_count",
 			    "_observers", "_avoid"] DO {
     if (0 < (count _triggerList)) then {
-        private ["_vehicle", "_type"];
+        private ["_vehicle", "_type", "_virtual"];
         private _classNames = [];
-	{
-	    _vehicle = _x;
-	    if (_vehicle isKindOf "LandVehicle") then {
-		_type = typeOf _vehicle;
-//		if (not (_type in _classNames)) then {
-		_classNames = _classNames + [_type];
-//		}; (Removed uniqueness-check, so we can weight probability)
-		{ deleteVehicle _x } forEach (crew _vehicle) + [_vehicle];
-	    };
-	} forEach _triggerList;
+
+	if ("BOOL" == (typeName _count)) then {
+	    private _virtuals = [];
+	    {
+	      _vehicle = _x;
+	      _virtual = _vehicle call fnc_virtualize_crew;
+	      _virtuals = _virtuals + [[typeOf _vehicle, _virtual]];
+	      { deleteVehicle _x } forEach ((crew _vehicle) + [_vehicle]);
+	    } forEach _triggerList;
+	    _self setVariable ["virtuals", _virtuals];
+	    _count = count _virtuals;
+        } else {
+	  {
+	      _vehicle = _x;
+	      if (_vehicle isKindOf "LandVehicle") then {
+		  _type = typeOf _vehicle;
+  //		if (not (_type in _classNames)) then {
+		  _classNames = _classNames + [_type];
+  //		}; (Removed uniqueness-check, so we can weight probability)
+		  { deleteVehicle _x } forEach (crew _vehicle) + [_vehicle];
+	      };
+	  } forEach _triggerList;
+	};
 	_self setVariable ["vehicleClasses", _classNames];
     } else {
 	_self setVariable ["vehicleClasses", [
@@ -79,9 +92,11 @@ DEFCLASS("VehicleTargets") ["_self", "_trigger", "_triggerList", "_count",
     private _triggerAreaSpec = triggerArea _trigger;
     private _radius = ((_triggerAreaSpec select 0) min
 		       (_triggerAreaSpec select 1));
-    private _finder = ["LocationFinder", 5 max (ceil (3.1*(_count)))] call fnc_new;
+    private _finder = ["LocationFinder", 5 max (ceil (4.2*(_count)))] call fnc_new;
     [_finder, "configure", [["center", [_pos]],
-			    ["radius", _radius * 0.618],
+			    ["shape",
+			     [7 max (ceil (4.2*(_count)))] call fnc_make_ring_cross], //ring_cross],
+			    ["radius", _radius * 0.618], // (0.382 + (random 0.236))], // (0.408 + (random 0.42))],
 			    ["allowSingleBins", false]]
     ] call fnc_tell;
     private _assignments = [["trigger", _trigger]];
@@ -91,7 +106,7 @@ DEFCLASS("VehicleTargets") ["_self", "_trigger", "_triggerList", "_count",
 	     private _trig = _x getVariable "trigger";
 	     if (_x inArea _trig) then { 1 } else { 0 };
 	 }] call fnc_lambda  ] call fnc_to_cost_function,
-	[true,  0.15, 0.75, '[_x, 1.5, 2, 0.4]',
+	[true,  0.15, 0.75, '[_x, 3.0, 1, 0.4]',
 	 fnc_check_los_grid  ] call fnc_to_cost_function,
 	OPT_fnc_surface_is_not_water,
 	OPT_fnc_distance_to_roads
@@ -160,13 +175,16 @@ DEFMETHOD("VehicleTargets", "get_logics") ["_self"] DO {
     private _logics = [];
     private _count = _self getVariable "count";
     private _trigger = _self getVariable "trigger";
+    private _finder = _self getVariable "finder";
+    private _center = (_finder getVariable "center") select 0;
     while { (count _logics) < _count } do {
 	_logics = _logics +
-	    ([_self getVariable "finder", "run",
-	      (_count - (count _logics)) + 2, 3] call fnc_tell);
+	    ([_finder, "run",
+	      floor ((_count - (count _logics))*1.5), 3] call fnc_tell);
 	_logics = [[["_logic"], {
 		     private _targets = _logic getVariable "targets";
 	             private _avoid   = _logic getVariable "avoid";
+                     private _requiredScores = [];
 	             private _score   = [_logic, "evaluate_objectives"] call fnc_tell;
 	             private _check = true;
 	             if (not isNil "_targets") then {
@@ -194,6 +212,10 @@ DEFMETHOD("VehicleTargets", "get_logics") ["_self"] DO {
 	             _check
                   }] call fnc_lambda,
 		   _logics] call fnc_filter;
+	[_finder, "configure", [["radius", 42 max (_finder getVariable "radius") * 0.618],
+	                        ["center", [_center] +
+				 ([[["_x"], { position _x }] call fnc_lambda,
+				   _logics] call fnc_map)]]] call fnc_tell;
     };
     if (_count < (count _logics)) then {
 	{
@@ -210,8 +232,12 @@ DEFMETHOD("VehicleTargets", "spawn") ["_self", "_alive", "_priority"] DO {
     if (isNil "_priority") then { _priority = true  };
     private _logics = [_self, "get_logics"] call fnc_tell;
     private _classes  = _self getVariable "vehicleClasses";
+    private _virtuals = _self getVariable "virtuals";
     private _vehicles = [];
     private _toSpawn = [];
+
+    private _avoidScores = [];
+     
     {
 	_logic = _x;
 	private _targets = _logic getVariable "targets";
@@ -239,14 +265,37 @@ DEFMETHOD("VehicleTargets", "spawn") ["_self", "_alive", "_priority"] DO {
 	    _target = objNull;
 	};
 	_toSpawn = _toSpawn + [[position _logic, _target]];
+
+	_avoidScores = _avoidScores +
+	  [([_logic, "evaluate_objectives"] call fnc_tell) select 8];
+
 	[_logic, "hide"] call fnc_tell;
 	deleteVehicle _logic;
     } forEach _logics;
+    private _spawnIndex = 0;
     {
 	_position = _x select 0;
+//      Don't do this here, it can cause collisions. This must be done,
+//      if at all, prior to weeding out positions too close together.
+//	_position = [_position, 0, 10, 5, 0, 0.25, 0, [], [_position]]
+//                     call BIS_fnc_findSafePos;
 	_target   = _x select 1;
-	_vehicle  = ((_classes select ([0, count _classes] call fnc_randint))
-		     createVehicle _position);
+
+	private ["_fnCrew"];
+
+	if (not isNil "_virtuals") then {
+	  private _virtual = _virtuals select _spawnIndex;
+	  _spawnIndex = _spawnIndex + 1;
+          _vehicle = (_virtual select 0) createVehicle _position;
+	  _vehicle setVariable ["virtual", _virtual select 1];
+	  _fnCrew = { [_this, _this getVariable "virtual"] call fnc_actualize_crew };
+        } else {
+	  _vehicle  = ((_classes select ([0, count _classes] call fnc_randint))
+		       createVehicle _position);
+          _fnCrew = { createVehicleCrew (_this select 0) };
+	};
+
+	_vehicle allowDamage false;
 	if (isNull _target) then {
 	    _vehicle setDir (random 360);
         } else {
@@ -254,14 +303,72 @@ DEFMETHOD("VehicleTargets", "spawn") ["_self", "_alive", "_priority"] DO {
 			     + (random 11.25));
 	};
 	if (_alive) then {
-	    createVehicleCrew _vehicle;
+	    _vehicle call _fnCrew;
+	    { _x allowDamage false } forEach (crew _vehicle);
 	    _vehicle allowCrewInImmobile true;
 	    if (not isNull _target) then {
 		_vehicle doWatch _target;
 	    };
 	    (driver _vehicle) disableAI "MOVE";
+
+	    // Reenable MOVE AI if an enemy gets past 90 degrees L/R:
+            private _driverActivator = _vehicle spawn {
+		private ["_dir"];
+		private _veh = _this;
+		private _waiting = true;
+		while { _waiting and (alive (driver _veh)) } do {
+		    sleep 3;
+		    private _known = _veh nearTargets 600;
+		    {
+		        if ((not ((_x select 2) == sideUnknown)) and
+			    ((_x select 4) isKindOf "LandVehicle") and
+			    (0 < (_x select 3)) and
+			    (0 < ((group _veh) knowsAbout (_x select 4))))
+			then {
+			    _dir = _veh getRelDir (_x select 0);
+			    if ((90 < _dir) and (_dir < 270)) then {
+				systemChat format ["Angle %1 break %2",
+						   _dir, _x];
+				_waiting = false;
+			    };
+			};
+		    } forEach _known;
+		};
+		(driver _veh) enableAI "MOVE";
+	    };
+	    (driver _vehicle) setVariable ["activator", _driverActivator];
+	    
 	};
-	_vehicle engineOn true; // but, crew turns it back off.
+	_vehicle engineOn true;
+
+	// Make invulnerable while the vehicle "settles"; reenable AI if moved:
+	[_vehicle, _target, _fnCrew] spawn {
+	    params ["_veh", "_tgt", "_fnc"];
+	    private _pos_0 = position  _veh;
+	    private _dir_0 = vectorDir _veh;
+	    private _crew = crew _veh;
+	    sleep 10;
+	    private _dir_F = (position _veh) vectorFromTo (position _tgt);
+	    _veh setVectorDirAndUp [(position _veh) vectorFromTo (position _tgt),
+				    (surfaceNormal (position _veh))];
+	    _veh setPosATL [(position _veh) select 0,
+			    (position _veh) select 1,
+			    0.1];
+	    sleep 5;
+	    if (0 == ({(alive _x) and ((vehicle _x) == _veh)} count _crew)) then {
+		{ deleteVehicle _x; } forEach _crew;
+		_veh call _fnc;
+		(driver _veh) disableAI "MOVE";
+	    };
+	    if (5 < (_pos_0 distance (position _veh))) then {
+		terminate (_veh getVariable "activator");
+		(driver _veh) enableAI "MOVE";
+	    };
+	    _veh allowDamage true;
+	    _veh doWatch _tgt;
+	    { _x allowDamage true } forEach (crew _veh);
+	};
+	
 	_vehicles = _vehicles + [_vehicle];
     } forEach _toSpawn;
     _vehicles

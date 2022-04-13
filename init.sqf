@@ -210,3 +210,108 @@ fnc_clear_waypoints = [["_group"], {
       deleteWaypoint (_waypoints select 0);
     };
 }] call fnc_lambda;
+
+
+
+fnc_virtualize_crew = {
+    private _vehicle   = _this;
+    private _driver    = [];
+    private _commander = [];
+    private _turrets   = [];
+    private _cargo     = [];
+    private _fnCrew = {
+	params ["_obj", "_type", "_cidx", "_tpath", "_pturret"];
+	if (not isNull _obj) then {
+	    private _loadout   = getUnitLoadout _obj;
+	    private _className = typeOf _obj;
+	    private _grp       = group _obj;
+	    switch (_type) do {
+	    case "driver":    {    _driver = [_grp,     [-1],
+					      _loadout, _className] };
+	    case "commander": { _commander = [_grp,     _tpath,
+					      _loadout, _className] };
+	    case "gunner";
+	    case "turret":    {   _turrets = _turrets + [
+                                             [_grp,     _tpath,
+					      _loadout, _className]] };
+	    case "cargo":     {     _cargo = _cargo + [
+		                             [_grp,     [],
+					      _loadout, _className]] };
+	    };
+	    unassignVehicle _obj;
+	    deleteVehicle _obj;
+	};
+    };
+    { _x call _fnCrew } forEach (fullCrew _vehicle);
+    [["driver",    _driver],
+     ["commander", _commander],
+     ["turrets",   _turrets],
+     ["cargo",     _cargo]]
+    
+};
+
+fnc_actualize_crew = {
+    params ["_vehicle", "_crewSpec"];
+    private _men = [];
+    {
+	private ["_type", "_specs", "_man"];
+	_type  = _x select 0;
+	_specs = _x select 1;
+	switch (_type) do {
+	    case "driver": {
+		if (0 < (count _specs)) then {
+		    _man = (_specs select 0) createUnit [_specs select 3,
+							 position _vehicle,
+							 [],
+							 0,
+							 "NONE"];
+		    _man assignAsDriver _vehicle;
+		    _man moveInDriver _vehicle;
+		    _man setUnitLoadout (_specs select 2);
+		    _men = _men + [_man];
+		};
+	    };
+	    case "commander": {
+		if (0 < (count _specs)) then {
+		    _man = (_specs select 0) createUnit [_specs select 3,
+							 position _vehicle,
+							 [],
+							 0,
+							 "NONE"];
+		   _man assignAsCommander _vehicle;
+		   _man moveInCommander _vehicle;
+		   _man setUnitLoadout (_specs select 2);
+		   _vehicle setEffectiveCommander _man;
+		   _men = _men + [_man];
+		};
+	    };
+	    case "turrets": {
+		{
+		    _man = (_x select 0) createUnit [_x select 3,
+						     position _vehicle,
+						     [],
+						     0,
+						     "NONE"];
+		    _man assignAsTurret [_vehicle, _x select 1];
+		    _man moveInTurret [_vehicle, _x select 1];
+		    _man setUnitLoadout (_x select 2);
+		    _men = _men + [_man];
+		} forEach _specs;
+	    };
+	    case "cargo": {
+		{
+		    _man = (_x select 0) createUnit [_x select 3,
+						     position _vehicle,
+						     [],
+						     0,
+						     "NONE"];
+		    _man assignAsCargo _vehicle;
+		    _man moveInCargo _vehicle;
+		    _man setUnitLoadout (_x select 2);
+		    _men = _men + [_man];
+		} forEach _specs;
+	    };
+	};
+    } forEach _crewSpec;
+    _men
+};
